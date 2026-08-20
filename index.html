@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b0d">
+<title>Movie Roulette</title>
+<style>
+  :root {
+    --bg:#0b0b0d; --card:#151519; --card2:#1d1d23; --text:#f4f4f5;
+    --muted:#a1a1aa; --accent:#c7ff3d; --danger:#ff5c7a; --border:#2b2b33;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; min-height:100vh; background:radial-gradient(circle at top,#25252d 0,#0b0b0d 42%);
+    color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  .wrap { width:min(760px,100%); margin:auto; padding:24px 18px 40px; }
+  header { text-align:center; padding:14px 0 22px; }
+  .eyebrow { color:var(--accent); font-size:.78rem; font-weight:800; letter-spacing:.18em; text-transform:uppercase; }
+  h1 { margin:8px 0 4px; font-size:clamp(2rem,9vw,3.2rem); letter-spacing:-.05em; }
+  .subtitle { color:var(--muted); margin:0; }
+  .roulette {
+    background:linear-gradient(145deg,#1b1b21,#101014); border:1px solid var(--border);
+    border-radius:24px; padding:26px 20px; text-align:center; box-shadow:0 18px 50px #0008;
+  }
+  .remaining { color:var(--muted); font-size:.9rem; margin-bottom:14px; }
+  .movie { min-height:110px; display:flex; align-items:center; justify-content:center; font-weight:800;
+    font-size:clamp(1.8rem,7vw,3rem); line-height:1.05; letter-spacing:-.035em; padding:10px; }
+  .hint { color:var(--muted); min-height:22px; margin:6px 0 18px; }
+  button {
+    border:0; border-radius:14px; padding:14px 18px; font-size:1rem; font-weight:800; cursor:pointer;
+    color:#0b0b0d; background:var(--accent); min-height:50px;
+  }
+  button:active { transform:scale(.98); }
+  button.secondary { background:var(--card2); color:var(--text); border:1px solid var(--border); }
+  button.danger { color:#fff; background:#7b1f35; }
+  .actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .wide { width:100%; margin-top:10px; }
+  .section { margin-top:22px; background:#101014cc; border:1px solid var(--border); border-radius:20px; overflow:hidden; }
+  .section-head { display:flex; justify-content:space-between; align-items:center; padding:16px 18px; }
+  .section h2 { margin:0; font-size:1.05rem; }
+  .count { color:var(--muted); font-size:.85rem; }
+  .list { padding:0 12px 12px; }
+  label.movie-row {
+    display:flex; align-items:center; gap:12px; padding:13px 8px; border-top:1px solid #24242a;
+    cursor:pointer;
+  }
+  input[type=checkbox] { width:22px; height:22px; accent-color:var(--accent); flex:none; }
+  .row-name { flex:1; }
+  .watched .row-name { color:#777780; text-decoration:line-through; }
+  .empty { color:var(--muted); text-align:center; padding:25px 12px 30px; }
+  .toast { position:fixed; left:50%; bottom:22px; transform:translate(-50%,20px); opacity:0;
+    background:#f4f4f5; color:#111; padding:11px 16px; border-radius:999px; font-weight:700;
+    transition:.2s; pointer-events:none; z-index:5; }
+  .toast.show { opacity:1; transform:translate(-50%,0); }
+  @media (min-width:600px) {
+    .list { display:grid; grid-template-columns:1fr 1fr; }
+    label.movie-row { border-top:1px solid #24242a; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Your personal horror movie picker</div>
+    <h1>🎬 Movie Roulette</h1>
+    <p class="subtitle">Let fate decide what you watch tonight.</p>
+  </header>
+
+  <main>
+    <section class="roulette">
+      <div class="remaining" id="remainingTop">32 movies remaining</div>
+      <div class="movie" id="selectedMovie">Ready?</div>
+      <div class="hint" id="hint">Tap the button and let the roulette choose.</div>
+      <div class="actions">
+        <button id="pickBtn">🎲 Pick a Movie</button>
+        <button class="secondary" id="watchedBtn" disabled>✓ Watched</button>
+      </div>
+      <button class="secondary wide" id="againBtn" disabled>Pick Again</button>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Unwatched</h2><span class="count" id="unwatchedCount"></span>
+      </div>
+      <div class="list" id="unwatchedList"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <h2>Watched</h2><span class="count" id="watchedCount"></span>
+      </div>
+      <div class="list" id="watchedList"></div>
+    </section>
+
+    <button class="danger wide" id="resetBtn">↻ Reset All Movies</button>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const movies = [
+"Pontypool","Lost Highway","The Others","It Follows","Mulholland Drive","Exorcist","Exorcist 3",
+"The Craft","Halloween 3","Practical Magic","Sleepy Hollow","The Burbs","Monster Squad",
+"Nightmare on Elm Street","Nightmare on Elm Street 3","Nightmare on Elm Street 4","The Descent",
+"The Bay","The House of the Devil","One Missed Call","The Ring","Urban Legend","Blue Velvet",
+"Texas Chainsaw Massacre","Texas Chainsaw Massacre 2","House on Haunted Hill (1959)",
+"Night of the Hunter","Something Wicked This Way Comes","Ginger Snaps","Spirited Away",
+"The Changeling (1980)","The Haunting (1960)"
+];
+
+const STORAGE_KEY = "movieRouletteWatched_v1";
+let watched = new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"));
+let selected = null;
+
+const $ = id => document.getElementById(id);
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([...watched]));
+}
+function remaining() { return movies.filter(m => !watched.has(m)); }
+
+function renderList() {
+  const u = remaining(), w = movies.filter(m => watched.has(m));
+  $("remainingTop").textContent = `${u.length} movie${u.length === 1 ? "" : "s"} remaining`;
+  $("unwatchedCount").textContent = u.length;
+  $("watchedCount").textContent = w.length;
+
+  $("unwatchedList").innerHTML = u.length ? u.map(m => row(m,false)).join("") :
+    `<div class="empty">You watched everything! 🍿</div>`;
+  $("watchedList").innerHTML = w.length ? w.map(m => row(m,true)).join("") :
+    `<div class="empty">Nothing watched yet.</div>`;
+
+  document.querySelectorAll("input[data-movie]").forEach(box => {
+    box.addEventListener("change", e => toggle(e.target.dataset.movie, e.target.checked));
+  });
+}
+function row(movie,isWatched) {
+  return `<label class="movie-row ${isWatched ? "watched" : ""}">
+    <input type="checkbox" data-movie="${escapeHtml(movie)}" ${isWatched ? "checked" : ""}>
+    <span class="row-name">${escapeHtml(movie)}</span>
+  </label>`;
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+}
+function pick() {
+  const pool = remaining();
+  if (!pool.length) {
+    selected = null;
+    $("selectedMovie").textContent = "You watched them all! 🍿";
+    $("hint").textContent = "Reset the list to start another round.";
+    $("watchedBtn").disabled = true; $("againBtn").disabled = true;
+    return;
+  }
+  selected = pool[Math.floor(Math.random() * pool.length)];
+  $("selectedMovie").textContent = selected;
+  $("hint").textContent = "Is this tonight's movie?";
+  $("watchedBtn").disabled = false; $("againBtn").disabled = false;
+}
+function toggle(movie, isWatched) {
+  if (isWatched) watched.add(movie); else watched.delete(movie);
+  if (selected === movie && isWatched) {
+    selected = null;
+    $("selectedMovie").textContent = "Marked watched ✓";
+    $("hint").textContent = "Ready for the next movie?";
+    $("watchedBtn").disabled = true;
+  }
+  save(); renderList();
+  toast(isWatched ? `${movie} marked watched` : `${movie} moved back to unwatched`);
+}
+function markSelectedWatched() {
+  if (!selected) return;
+  const movie = selected;
+  watched.add(movie); selected = null; save(); renderList();
+  $("selectedMovie").textContent = "Watched! ✓";
+  $("hint").textContent = "Ready for another pick?";
+  $("watchedBtn").disabled = true; $("againBtn").disabled = false;
+  toast(`${movie} marked watched`);
+}
+function toast(text) {
+  const t=$("toast"); t.textContent=text; t.classList.add("show");
+  clearTimeout(window.__toast); window.__toast=setTimeout(()=>t.classList.remove("show"),1800);
+}
+$("pickBtn").onclick = pick;
+$("againBtn").onclick = pick;
+$("watchedBtn").onclick = markSelectedWatched;
+$("resetBtn").onclick = () => {
+  if (confirm("Reset all 32 movies to unwatched?")) {
+    watched.clear(); selected=null; save(); renderList();
+    $("selectedMovie").textContent="Ready?"; $("hint").textContent="Tap the button and let the roulette choose.";
+    $("watchedBtn").disabled=true; $("againBtn").disabled=true; toast("All movies reset");
+  }
+};
+renderList();
+</script>
+</body>
+</html>
